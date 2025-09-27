@@ -1,46 +1,89 @@
 import React, { useEffect, useState } from 'react'
 import { api } from './api'
+import QRTools from './QRTools.jsx'
 
 export default function App() {
   const [health, setHealth] = useState(null)
   const [vendors, setVendors] = useState([])
   const [lots, setLots] = useState([])
   const [items, setItems] = useState([])
+  const [inspections, setInspections] = useState([])
+
   const [selectedVendor, setSelectedVendor] = useState('')
   const [selectedLot, setSelectedLot] = useState('')
-  const [inspections, setInspections] = useState([])
-  const [form, setForm] = useState({ itemUid: '', date: '', inspector: '', result: 'pass', notes: '' })
+  const [filteredItems, setFilteredItems] = useState([])
+
+  const [form, setForm] = useState({ itemUid: '', date: '', inspector: 'Saif', result: 'pass', notes: '' })
   const [error, setError] = useState('')
+
+  // Analytics
+  const [metrics, setMetrics] = useState(null)
+  const [insight, setInsight] = useState(null)
+  const [loadingRpt, setLoadingRpt] = useState(false)
 
   useEffect(() => {
     api.health().then(setHealth).catch(console.error)
     api.vendors().then(setVendors).catch(console.error)
     api.lots().then(setLots).catch(console.error)
     api.items().then(setItems).catch(console.error)
+    api.inspections().then(setInspections).catch(console.error)
   }, [])
+
+  useEffect(() => {
+    let arr = items
+    if (selectedVendor) {
+      const lotIds = lots.filter(l => l.vendorCode === selectedVendor).map(l => l.id)
+      arr = arr.filter(i => lotIds.includes(i.lotId))
+    }
+    if (selectedLot) arr = arr.filter(i => i.lotId === selectedLot)
+    setFilteredItems(arr)
+  }, [items, lots, selectedVendor, selectedLot])
 
   useEffect(() => {
     if (form.itemUid) {
       api.inspections({ itemUid: form.itemUid }).then(setInspections).catch(console.error)
-    } else {
-      setInspections([])
     }
   }, [form.itemUid])
-
-  const filteredLots = selectedVendor ? lots.filter(l => l.vendorCode === selectedVendor) : lots
-  const filteredItems = selectedLot ? items.filter(i => i.lotId === selectedLot) : items
 
   const handleCreateInspection = async (e) => {
     e.preventDefault()
     setError('')
     try {
-      const payload = { ...form }
-      await api.createInspection(payload)
+      await api.createInspection({ ...form })
       const list = await api.inspections({ itemUid: form.itemUid })
       setInspections(list)
       alert('Inspection created')
     } catch (err) {
       setError(err.message)
+    }
+  }
+
+  const counts = {
+    vendors: vendors.length,
+    lots: lots.length,
+    items: items.length,
+    inspections: inspections.length,
+  }
+
+  async function generateAnalytics() {
+    try {
+      setLoadingRpt(true)
+      const m = await api.reportsMetrics()
+      const i = await api.reportsInsights()
+      setMetrics(m)
+      setInsight(i)
+    } catch (e) {
+      console.error(e)
+      alert('Failed to generate analytics')
+    } finally {
+      setLoadingRpt(false)
+    }
+  }
+
+  const copyNarrative = async () => {
+    if (insight?.narrative) {
+      await navigator.clipboard.writeText(insight.narrative)
+      alert('Summary copied')
     }
   }
 
@@ -59,7 +102,7 @@ export default function App() {
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <div>
             <label>Vendor</label><br/>
-            <select value={selectedVendor} onChange={e => setSelectedVendor(e.target.value)}>
+            <select value={selectedVendor} onChange={e => { setSelectedVendor(e.target.value); setSelectedLot('') }}>
               <option value="">All</option>
               {vendors.map(v => <option key={v.id} value={v.code}>{v.code} — {v.name}</option>)}
             </select>
@@ -68,7 +111,8 @@ export default function App() {
             <label>Lot</label><br/>
             <select value={selectedLot} onChange={e => setSelectedLot(e.target.value)}>
               <option value="">All</option>
-              {filteredLots.map(l => <option key={l.id} value={l.id}>{l.type}-{l.lotCode} ({l.vendorCode})</option>)}
+              {(selectedVendor ? lots.filter(l => l.vendorCode === selectedVendor) : lots)
+                .map(l => <option key={l.id} value={l.id}>{l.type}-{l.lotCode} ({l.vendorCode})</option>)}
             </select>
           </div>
         </div>
@@ -125,6 +169,40 @@ export default function App() {
             </li>
           ))}
         </ul>
+      </section>
+
+      {/* AI Analytics (Prototype) */}
+      <section style={{ marginTop: '2rem', border: '1px solid #ddd', padding: '1rem', borderRadius: 8 }}>
+        <h2>AI Analytics (Prototype)</h2>
+        <button onClick={generateAnalytics} disabled={loadingRpt}>
+          {loadingRpt ? 'Generating…' : 'Generate'}
+        </button>
+        {metrics && (
+          <div style={{ marginTop: 12 }}>
+            <strong>KPIs</strong>
+            <ul>
+              <li>Totals — vendors: {metrics.totals.vendors}, lots: {metrics.totals.lots}, items: {metrics.totals.items}, inspections: {metrics.totals.inspections}</li>
+              <li>Pass rate: {metrics.pass_rate !== null ? `${(metrics.pass_rate*100).toFixed(1)}%` : 'n/a'}</li>
+              <li>Fail rate: {metrics.fail_rate !== null ? `${(metrics.fail_rate*100).toFixed(1)}%` : 'n/a'}</li>
+              <li>Items by status: {Object.entries(metrics.items_by_status).map(([k,v])=>`${k}:${v}`).join(', ')}</li>
+              <li>Lots by type: {Object.entries(metrics.lots_by_type).map(([k,v])=>`${k}:${v}`).join(', ')}</li>
+              {metrics.vendors_leaderboard?.[0] && (
+                <li>Top risk vendor: {metrics.vendors_leaderboard[0].vendorCode} (fail {Math.round(metrics.vendors_leaderboard[0].fail_rate*100)}%)</li>
+              )}
+            </ul>
+          </div>
+        )}
+        {insight && (
+          <div style={{ marginTop: 10 }}>
+            <strong>Summary</strong>
+            <pre style={{ whiteSpace: 'pre-wrap' }}>{insight.narrative}</pre>
+            <button onClick={copyNarrative}>Copy summary</button>
+          </div>
+        )}
+      </section>
+
+      <section style={{ marginTop: '2rem' }}>
+        <QRTools />
       </section>
     </div>
   )

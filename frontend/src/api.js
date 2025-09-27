@@ -32,4 +32,13 @@ export const api = {
     return get(`/api/inspections${q ? `?${q}` : ''}`)
   },
   createInspection: (payload) => post('/api/inspections', payload),
+
+  // UID + QR
+  itemByUid: (uid) => get(`/api/items/by-uid?uid=${encodeURIComponent(uid)}`),
+  uidMake: (payload) => post('/api/uid/make', payload),
+  uidVerify: (uid, sig) => get(`/api/uid/verify?uid=${encodeURIComponent(uid)}&sig=${encodeURIComponent(sig)}`),
+
+  // Reports
+  reportsMetrics: () => get('/api/reports/metrics'),
+  reportsInsights: () => get('/api/reports/insights'),
 }

@@ -11,6 +11,7 @@ FILES = {
     "lots": DATA_DIR / "lots.json",
     "items": DATA_DIR / "items.json",
     "inspections": DATA_DIR / "inspections.json",
+    "scans": DATA_DIR / "scans.json",  # NEW
 }
 
 def _ensure_file(path: Path):

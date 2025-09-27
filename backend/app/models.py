@@ -33,3 +33,12 @@ class Inspection(BaseModel):
     inspector: str
     result: str  # pass|fail|rework
     notes: Optional[str] = None
+
+class Scan(BaseModel):
+    id: str
+    uid: str
+    sig: Optional[str] = None
+    valid: Optional[bool] = None
+    raw: Optional[str] = None
+    source: Optional[str] = None  # camera|upload|manual
+    ts: str  # ISO timestamp
